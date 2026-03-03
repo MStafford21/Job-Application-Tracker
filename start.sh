@@ -1,11 +1,11 @@
 #!/bin/bash
 # start.sh — Start both backend and frontend
 
-echo "🚀 Starting JobTracker..."
+echo " Starting JobTracker..."
 echo ""
 
 # Start backend
-echo "📦 Starting .NET API (http://localhost:5000)..."
+echo " Starting .NET API (http://localhost:5000)..."
 cd backend/JobTracker.API
 dotnet run &
 BACKEND_PID=$!
@@ -14,13 +14,13 @@ BACKEND_PID=$!
 sleep 3
 
 # Start frontend
-echo "⚛️  Starting React frontend (http://localhost:5173)..."
+echo "  Starting React frontend (http://localhost:5173)..."
 cd ../../frontend
 npm run dev &
 FRONTEND_PID=$!
 
 echo ""
-echo "✅ JobTracker is running!"
+echo " JobTracker is running!"
 echo "   Frontend: http://localhost:5173"
 echo "   API:      http://localhost:5000"
 echo "   Swagger:  http://localhost:5000/swagger"
