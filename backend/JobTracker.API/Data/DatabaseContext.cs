@@ -1,5 +1,5 @@
 using Dapper;
-using Microsoft.Data.Sqlite;
+using Npgsql;
 using JobTracker.API.Models;
 
 namespace JobTracker.API.Data;
@@ -15,7 +15,7 @@ public class DatabaseContext
         InitializeDatabase();
     }
 
-    private SqliteConnection CreateConnection() => new SqliteConnection(_connectionString);
+    private NpgsqlConnection CreateConnection() => new NpgsqlConnection(_connectionString);
 
     private void InitializeDatabase()
     {
@@ -24,7 +24,7 @@ public class DatabaseContext
 
         connection.Execute(@"
             CREATE TABLE IF NOT EXISTS JobApplications (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
+                Id SERIAL PRIMARY KEY,
                 CompanyName TEXT NOT NULL,
                 JobTitle TEXT NOT NULL,
                 JobUrl TEXT,
@@ -32,23 +32,22 @@ public class DatabaseContext
                 Salary TEXT,
                 Status TEXT NOT NULL DEFAULT 'Applied',
                 Priority TEXT NOT NULL DEFAULT 'Medium',
-                AppliedDate TEXT,
-                FollowUpDate TEXT,
+                AppliedDate TIMESTAMPTZ,
+                FollowUpDate TIMESTAMPTZ,
                 Notes TEXT,
                 ContactName TEXT,
                 ContactEmail TEXT,
-                CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
-                UpdatedAt TEXT NOT NULL DEFAULT (datetime('now'))
+                CreatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                UpdatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
             CREATE TABLE IF NOT EXISTS ApplicationEvents (
-                Id INTEGER PRIMARY KEY AUTOINCREMENT,
-                JobApplicationId INTEGER NOT NULL,
+                Id SERIAL PRIMARY KEY,
+                JobApplicationId INTEGER NOT NULL REFERENCES JobApplications(Id) ON DELETE CASCADE,
                 EventType TEXT NOT NULL,
-                EventDate TEXT NOT NULL,
+                EventDate TIMESTAMPTZ NOT NULL,
                 Notes TEXT,
-                CreatedAt TEXT NOT NULL DEFAULT (datetime('now')),
-                FOREIGN KEY (JobApplicationId) REFERENCES JobApplications(Id) ON DELETE CASCADE
+                CreatedAt TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
         ");
     }
@@ -69,7 +68,7 @@ public class DatabaseContext
 
         if (!string.IsNullOrEmpty(search))
         {
-            sql += " AND (CompanyName LIKE @Search OR JobTitle LIKE @Search OR Location LIKE @Search)";
+            sql += " AND (CompanyName ILIKE @Search OR JobTitle ILIKE @Search OR Location ILIKE @Search)";
             parameters.Add("Search", $"%{search}%");
         }
 
@@ -100,8 +99,8 @@ public class DatabaseContext
             INSERT INTO JobApplications (CompanyName, JobTitle, JobUrl, Location, Salary, Status, Priority, 
                 AppliedDate, FollowUpDate, Notes, ContactName, ContactEmail, CreatedAt, UpdatedAt)
             VALUES (@CompanyName, @JobTitle, @JobUrl, @Location, @Salary, @Status, @Priority,
-                @AppliedDate, @FollowUpDate, @Notes, @ContactName, @ContactEmail, @CreatedAt, @UpdatedAt);
-            SELECT last_insert_rowid();";
+                @AppliedDate, @FollowUpDate, @Notes, @ContactName, @ContactEmail, @CreatedAt, @UpdatedAt)
+            RETURNING Id;";
         
         app.CreatedAt = DateTime.UtcNow;
         app.UpdatedAt = DateTime.UtcNow;
@@ -136,7 +135,7 @@ public class DatabaseContext
     {
         using var connection = CreateConnection();
         var results = await connection.QueryAsync<(string Status, int Count)>(
-            "SELECT Status, COUNT(*) as Count FROM JobApplications GROUP BY Status");
+            "SELECT Status, COUNT(*)::int as Count FROM JobApplications GROUP BY Status");
         return results.ToDictionary(r => r.Status, r => r.Count);
     }
 
@@ -146,8 +145,8 @@ public class DatabaseContext
         using var connection = CreateConnection();
         var sql = @"
             INSERT INTO ApplicationEvents (JobApplicationId, EventType, EventDate, Notes, CreatedAt)
-            VALUES (@JobApplicationId, @EventType, @EventDate, @Notes, @CreatedAt);
-            SELECT last_insert_rowid();";
+            VALUES (@JobApplicationId, @EventType, @EventDate, @Notes, @CreatedAt)
+            RETURNING Id;";
         evt.CreatedAt = DateTime.UtcNow;
         evt.Id = await connection.ExecuteScalarAsync<int>(sql, evt);
         return evt;
